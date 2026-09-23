@@ -1,0 +1,20 @@
+# Java / Gradle
+backend/build/
+backend/.gradle/
+*.class
+*.jar
+!backend/gradle/wrapper/gradle-wrapper.jar
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Tajne i lokalni podaci
+.env
+*.db
+/tmp/
