@@ -30,8 +30,7 @@ public class DockerRunner {
     public RunResult runCpp(String source, String stdin) throws IOException, InterruptedException {
         Path dir = Files.createTempDirectory("run-");
         try {
-            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwxr-xr-x"));
-            Path file = dir.resolve("main.cpp");
+            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwxrwxrwx"));            Path file = dir.resolve("main.cpp");
             Files.writeString(file, source);
             Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-r--r--"));
 
