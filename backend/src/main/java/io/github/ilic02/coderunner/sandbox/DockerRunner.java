@@ -10,55 +10,149 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Comparator;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 public class DockerRunner {
 
-    public record RunResult(int exitCode, String stdout, String stderr) {}
+    private static final long COMPILE_TIMEOUT_MS = 10_000;
+    private static final long RUN_TIMEOUT_MS = 5_000;
+    private static final long OUTPUT_LIMIT_BYTES = 64 * 1024; // 64 KB
+    private static final String MEMORY_LIMIT = "128m";
 
-    public RunResult runCpp(String source, String stdin)
-            throws IOException, InterruptedException {
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(8);
+    
+    public RunResult runCpp(String source, String stdin) throws IOException, InterruptedException {
         Path dir = Files.createTempDirectory("run-");
         try {
-            // kontejner radi kao drugi korisnik, pa fajlovi moraju biti čitljivi svima
-            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwxr-xr-x"));
-            Path file = dir.resolve("main.cpp");
+            Files.setPosixFilePermissions(dir, PosixFilePermissions.fromString("rwxrwxrwx"));            Path file = dir.resolve("main.cpp");
             Files.writeString(file, source);
             Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rw-r--r--"));
 
-            List<String> cmd = List.of(
-                "docker", "run", "--rm", "-i",
-                "-v", dir + ":/work:ro",
+            // Faza 1: kompajliranje, bez ograničenja resursa, samo razumno vreme
+            String compileContainer = "compile-" + UUID.randomUUID();
+            List<String> compileCmd = List.of(
+                "docker", "run", "--rm", "--name", compileContainer,
+                "-v", dir + ":/work:rw",
                 "coderunner/cpp",
-                "sh", "-c", "g++ -O2 -o /tmp/a.out /work/main.cpp && /tmp/a.out");
+                "g++", "-O2", "-o", "/work/a.out", "/work/main.cpp");
 
-            Process process = new ProcessBuilder(cmd).start();
-            CompletableFuture<String> out = readAsync(process.getInputStream());
-            CompletableFuture<String> err = readAsync(process.getErrorStream());
+            long compileStart = System.currentTimeMillis();
+            ExecOutcome compileOutcome = runWithTimeout(compileCmd, "", compileContainer, COMPILE_TIMEOUT_MS);
+            long compileTime = System.currentTimeMillis() - compileStart;
 
-            try (OutputStream in = process.getOutputStream()) {
-                in.write(stdin.getBytes(StandardCharsets.UTF_8));
-            } catch (IOException ignored) {
-                // program je možda završio pre nego što je pročitao ulaz
+            if (compileOutcome.timedOut() || compileOutcome.exitCode() != 0) {
+                Verdict v = compileOutcome.timedOut() ? Verdict.TIME_LIMIT : Verdict.COMPILE_ERROR;
+                return new RunResult(v, compileOutcome.exitCode(), compileOutcome.stdout(),
+                        compileOutcome.stderr(), compileTime);
             }
 
-            int exitCode = process.waitFor();
-            return new RunResult(exitCode, out.join(), err.join());
+            // Faza 2: izvršavanje, sa punim skupom limita
+            String runContainer = "run-" + UUID.randomUUID();
+            List<String> runCmd = List.of(
+                "docker", "run", "--rm", "-i", "--name", runContainer,
+                "-v", dir + ":/work:ro",
+                "--memory", MEMORY_LIMIT, "--memory-swap", MEMORY_LIMIT,
+                "--pids-limit", "64",
+                "--network", "none",
+                "--read-only", "--tmpfs", "/tmp:size=16m",
+                "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+                "--user", "1000:1000",
+                "coderunner/cpp",
+                "/work/a.out");
+
+            long runStart = System.currentTimeMillis();
+            ExecOutcome runOutcome = runWithTimeout(runCmd, stdin, runContainer, RUN_TIMEOUT_MS);
+            long runTime = System.currentTimeMillis() - runStart;
+
+            Verdict verdict = classify(runOutcome);
+            return new RunResult(verdict, runOutcome.exitCode(), runOutcome.stdout(),
+                    runOutcome.stderr(), runTime);
         } finally {
             deleteRecursively(dir);
         }
     }
 
-    // stdout i stderr se čitaju istovremeno, inače proces može da se zaglavi
-    // kad se jedan od bafera napuni
-    private static CompletableFuture<String> readAsync(InputStream stream) {
+    private Verdict classify(ExecOutcome outcome) {
+        if (outcome.timedOut()) return Verdict.TIME_LIMIT;
+        if (outcome.outputTruncated()) return Verdict.OUTPUT_LIMIT;
+        if (outcome.exitCode() == 137) return Verdict.MEMORY_LIMIT;
+        if (outcome.exitCode() == 0) return Verdict.OK;
+        return Verdict.RUNTIME_ERROR;
+    }
+
+    private record ExecOutcome(int exitCode, String stdout, String stderr,
+                                boolean timedOut, boolean outputTruncated) {}
+
+    private ExecOutcome runWithTimeout(List<String> cmd, String stdin, String containerName, long timeoutMs)
+        throws IOException, InterruptedException {
+      Process process = new ProcessBuilder(cmd).start();
+      AtomicBoolean truncated = new AtomicBoolean(false);
+
+      CompletableFuture<String> out = readLimited(process.getInputStream(), truncated);
+      CompletableFuture<String> err = readLimited(process.getErrorStream(), truncated);
+
+      try (OutputStream in = process.getOutputStream()) {
+          in.write(stdin.getBytes(StandardCharsets.UTF_8));
+      } catch (IOException ignored) {
+      }
+
+      AtomicBoolean timedOut = new AtomicBoolean(false);
+      var killTask = scheduler.schedule(() -> {
+          timedOut.set(true);
+          killContainer(containerName);
+      }, timeoutMs, TimeUnit.MILLISECONDS);
+
+      var watchTask = scheduler.scheduleAtFixedRate(() -> {
+          if (truncated.get()) killContainer(containerName);
+      }, 200, 200, TimeUnit.MILLISECONDS);
+
+          int exitCode;
+    try {
+        exitCode = process.waitFor();
+    } finally {
+        killTask.cancel(false);
+        watchTask.cancel(false);
+        killContainer(containerName); // uvek pokušaj da ugasiš, za svaki slučaj
+    }
+
+    return new ExecOutcome(exitCode, out.join(), err.join(), timedOut.get(), truncated.get());
+    }
+
+    private void killContainer(String name) {
+      try {
+          new ProcessBuilder("docker", "kill", name)
+              .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+              .redirectError(ProcessBuilder.Redirect.DISCARD)
+              .start();
+      } catch (IOException e) {
+      }
+  }
+
+    // čita najviše OUTPUT_LIMIT_BYTES, pa postavlja truncated i prestaje da čita
+    private static CompletableFuture<String> readLimited(InputStream stream, AtomicBoolean truncated) {
         return CompletableFuture.supplyAsync(() -> {
+            var buffer = new java.io.ByteArrayOutputStream();
+            byte[] chunk = new byte[4096];
             try (stream) {
-                return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+                int n;
+                while ((n = stream.read(chunk)) != -1) {
+                    if (buffer.size() + n > OUTPUT_LIMIT_BYTES) {
+                        buffer.write(chunk, 0, (int) (OUTPUT_LIMIT_BYTES - buffer.size()));
+                        truncated.set(true);
+                        break;
+                    }
+                    buffer.write(chunk, 0, n);
+                }
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
+            return buffer.toString(StandardCharsets.UTF_8);
         });
     }
 
