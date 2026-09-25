@@ -20,6 +20,14 @@ jobs:
         working-directory: .
         run: docker build -t coderunner/cpp runners/cpp
       - run: chmod +x gradlew && ./gradlew build
+      - name: Show test failures
+        if: always()
+        working-directory: backend
+        run: |
+          for f in build/test-results/test/*.xml; do
+            echo "=== $f ==="
+            cat "$f"
+          done
 
   frontend:
     runs-on: ubuntu-latest
