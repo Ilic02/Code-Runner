@@ -1,60 +1,175 @@
 import './style.css'
-import heroImg from './assets/hero.png'
-import typescriptLogo from './assets/typescript.svg'
-import viteLogo from './assets/vite.svg'
-import { setupCounter } from './counter.ts'
+import * as monaco from 'monaco-editor'
+import editorWorker from 'monaco-editor/editor/editor.worker?worker'
+// Monaco pokreće deo posla u web worker-u; Vite ga ovako pakuje
+const globalScope = self as unknown as { MonacoEnvironment: monaco.Environment }
+globalScope.MonacoEnvironment = {
+  getWorker: () => new editorWorker(),
+}
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-<section id="center">
-  <div class="hero">
-    <img src="${heroImg}" class="base" width="170" height="179">
-    <img src="${typescriptLogo}" class="framework" alt="TypeScript logo"/>
-    <img src="${viteLogo}" class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/main.ts</code> and save to test <code>HMR</code></p>
-  </div>
-  <button id="counter" type="button" class="counter"></button>
-</section>
+interface RunResult {
+  verdict: string
+  exitCode: number
+  stdout: string
+  stderr: string
+  timeMs: number
+}
 
-<div class="ticks"></div>
+interface Language {
+  label: string
+  monaco: string
+  template: string
+}
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#documentation-icon"></use></svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank">
-          <img class="logo" src="${viteLogo}" alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://www.typescriptlang.org" target="_blank">
-          <img class="button-icon" src="${typescriptLogo}" alt="">
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#social-icon"></use></svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li><a href="https://github.com/vitejs/vite" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#github-icon"></use></svg>GitHub</a></li>
-      <li><a href="https://chat.vite.dev/" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#discord-icon"></use></svg>Discord</a></li>
-      <li><a href="https://x.com/vite_js" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#x-icon"></use></svg>X.com</a></li>
-      <li><a href="https://bsky.app/profile/vite.dev" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#bluesky-icon"></use></svg>Bluesky</a></li>
-    </ul>
-  </div>
-</section>
+const LANGUAGES: Record<string, Language> = {
+  cpp: {
+    label: 'C++',
+    monaco: 'cpp',
+    template: [
+      '#include <iostream>',
+      '',
+      'int main() {',
+      '    std::cout << "Hello, world!" << std::endl;',
+      '}',
+      '',
+    ].join('\n'),
+  },
+  c: {
+    label: 'C',
+    monaco: 'c',
+    template: [
+      '#include <stdio.h>',
+      '',
+      'int main() {',
+      '    printf("Hello, world!\\n");',
+      '    return 0;',
+      '}',
+      '',
+    ].join('\n'),
+  },
+  java: {
+    label: 'Java',
+    monaco: 'java',
+    template: [
+      'public class Main {',
+      '    public static void main(String[] args) {',
+      '        System.out.println("Hello, world!");',
+      '    }',
+      '}',
+      '',
+    ].join('\n'),
+  },
+}
 
-<div class="ticks"></div>
-<section id="spacer"></section>
+const app = document.querySelector<HTMLDivElement>('#app')!
+app.innerHTML = `
+  <header>
+    <h1>code-runner</h1>
+    <div class="controls">
+      <select id="language"></select>
+      <button id="run">Run (Ctrl+Enter)</button>
+    </div>
+  </header>
+  <main>
+    <section class="editor-pane"><div id="editor"></div></section>
+    <section class="side-pane">
+      <label for="stdin">Input (stdin)</label>
+      <textarea id="stdin" spellcheck="false"></textarea>
+      <div class="output-header">
+        <span>Output</span>
+        <span id="verdict" class="verdict"></span>
+        <span id="time"></span>
+      </div>
+      <pre id="stdout"></pre>
+      <pre id="stderr"></pre>
+    </section>
+  </main>
 `
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+const languageSelect = document.querySelector<HTMLSelectElement>('#language')!
+const runButton = document.querySelector<HTMLButtonElement>('#run')!
+const stdinInput = document.querySelector<HTMLTextAreaElement>('#stdin')!
+const verdictEl = document.querySelector<HTMLSpanElement>('#verdict')!
+const timeEl = document.querySelector<HTMLSpanElement>('#time')!
+const stdoutEl = document.querySelector<HTMLPreElement>('#stdout')!
+const stderrEl = document.querySelector<HTMLPreElement>('#stderr')!
+
+for (const [id, lang] of Object.entries(LANGUAGES)) {
+  const option = document.createElement('option')
+  option.value = id
+  option.textContent = lang.label
+  languageSelect.appendChild(option)
+}
+
+let currentLanguage = 'cpp'
+const codeByLanguage: Record<string, string> = {}
+
+const editor = monaco.editor.create(document.querySelector<HTMLDivElement>('#editor')!, {
+  value: LANGUAGES[currentLanguage].template,
+  language: LANGUAGES[currentLanguage].monaco,
+  theme: 'vs-dark',
+  automaticLayout: true,
+  minimap: { enabled: false },
+  fontSize: 14,
+})
+
+// pri promeni jezika pamtimo kod koji je korisnik pisao za prethodni jezik
+languageSelect.addEventListener('change', () => {
+  codeByLanguage[currentLanguage] = editor.getValue()
+  currentLanguage = languageSelect.value
+  monaco.editor.setModelLanguage(editor.getModel()!, LANGUAGES[currentLanguage].monaco)
+  editor.setValue(codeByLanguage[currentLanguage] ?? LANGUAGES[currentLanguage].template)
+})
+
+// izlaz programa je nepoverljiv tekst, zato uvek textContent, nikad innerHTML
+function showResult(result: RunResult) {
+  verdictEl.textContent = result.verdict
+  verdictEl.className = `verdict verdict-${result.verdict}`
+  timeEl.textContent = `${result.timeMs} ms`
+  stdoutEl.textContent = result.stdout
+  stderrEl.textContent = result.stderr
+}
+
+function showError(message: string) {
+  verdictEl.textContent = 'ERROR'
+  verdictEl.className = 'verdict verdict-ERROR'
+  timeEl.textContent = ''
+  stdoutEl.textContent = ''
+  stderrEl.textContent = message
+}
+
+async function run() {
+  runButton.disabled = true
+  verdictEl.textContent = 'RUNNING'
+  verdictEl.className = 'verdict verdict-RUNNING'
+  timeEl.textContent = ''
+  stdoutEl.textContent = ''
+  stderrEl.textContent = ''
+
+  try {
+    const response = await fetch('/api/runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        language: languageSelect.value,
+        source: editor.getValue(),
+        stdin: stdinInput.value,
+      }),
+    })
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      showError(body?.message ?? `HTTP ${response.status}`)
+      return
+    }
+
+    showResult(await response.json())
+  } catch {
+    showError('Cannot reach the server')
+  } finally {
+    runButton.disabled = false
+  }
+}
+
+runButton.addEventListener('click', () => void run())
+editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => void run())
