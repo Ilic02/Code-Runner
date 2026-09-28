@@ -18,7 +18,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
+import org.springframework.stereotype.Component;
 
+@Component
 public class DockerRunner {
 
     private static final long COMPILE_TIMEOUT_MS = 10_000;
