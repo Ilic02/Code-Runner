@@ -1,6 +1,30 @@
 import './style.css'
-import * as monaco from 'monaco-editor'
+
+// Umesto glavnog ulaza ('monaco-editor', koji uvlači ~50 jezika i teške TypeScript/CSS/HTML/JSON
+// module) uvozimo jezgro, nekoliko funkcija editora i samo C/C++ i Javu.
+import * as monaco from 'monaco-editor/editor/editor.api'
 import editorWorker from 'monaco-editor/editor/editor.worker?worker'
+
+import 'monaco-editor/editor/browser/coreCommands'
+import 'monaco-editor/editor/browser/widget/codeEditor/codeEditorWidget'
+import 'monaco-editor/editor/contrib/bracketMatching/browser/bracketMatching'
+import 'monaco-editor/editor/contrib/clipboard/browser/clipboard'
+import 'monaco-editor/editor/contrib/comment/browser/comment'
+import 'monaco-editor/editor/contrib/contextmenu/browser/contextmenu'
+import 'monaco-editor/editor/contrib/find/browser/findController'
+import 'monaco-editor/editor/contrib/folding/browser/folding'
+import 'monaco-editor/editor/contrib/indentation/browser/indentation'
+import 'monaco-editor/editor/contrib/linesOperations/browser/linesOperations'
+import 'monaco-editor/editor/contrib/multicursor/browser/multicursor'
+import 'monaco-editor/editor/contrib/wordOperations/browser/wordOperations'
+
+// registar za cpp registruje i "c" i "cpp"
+import 'monaco-editor/languages/definitions/cpp/register'
+import 'monaco-editor/languages/definitions/java/register'
+
+// CSS uvozimo relativnom putanjom, jer "exports" mapa paketa za bare uvoze dodaje ".js" na kraj
+import '../node_modules/monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css'
+import '../node_modules/monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon-modifiers.css'
 // Monaco pokreće deo posla u web worker-u; Vite ga ovako pakuje
 const globalScope = self as unknown as { MonacoEnvironment: monaco.Environment }
 globalScope.MonacoEnvironment = {
