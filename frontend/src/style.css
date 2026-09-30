@@ -160,3 +160,16 @@ pre {
     border-top: 1px solid #333;
   }
 }
+
+#share-link {
+  font-size: 13px;
+  color: #4ec9b0;
+}
+
+#share-link a {
+  color: inherit;
+}
+
+#share-link.copied {
+  color: #dcdcaa;
+}
