@@ -92,6 +92,8 @@ app.innerHTML = `
     <div class="controls">
       <select id="language"></select>
       <button id="run">Run (Ctrl+Enter)</button>
+      <button id="share">Share</button>
+      <span id="share-link"></span>
     </div>
   </header>
   <main>
@@ -117,6 +119,8 @@ const verdictEl = document.querySelector<HTMLSpanElement>('#verdict')!
 const timeEl = document.querySelector<HTMLSpanElement>('#time')!
 const stdoutEl = document.querySelector<HTMLPreElement>('#stdout')!
 const stderrEl = document.querySelector<HTMLPreElement>('#stderr')!
+const shareButton = document.querySelector<HTMLButtonElement>('#share')!
+const shareLinkEl = document.querySelector<HTMLSpanElement>('#share-link')!
 
 for (const [id, lang] of Object.entries(LANGUAGES)) {
   const option = document.createElement('option')
@@ -197,3 +201,67 @@ async function run() {
 
 runButton.addEventListener('click', () => void run())
 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => void run())
+
+async function share() {
+  shareButton.disabled = true
+  shareLinkEl.textContent = 'Saving...'
+  shareLinkEl.className = ''
+
+  try {
+    const response = await fetch('/api/snippets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        language: languageSelect.value,
+        source: editor.getValue(),
+        stdin: stdinInput.value,
+      }),
+    })
+
+    if (!response.ok) {
+      shareLinkEl.textContent = 'Failed to save'
+      return
+    }
+
+    const { id } = await response.json()
+    const url = `${location.origin}${location.pathname}?id=${id}`
+
+    shareLinkEl.textContent = ''
+    const link = document.createElement('a')
+    link.href = url
+    link.textContent = url
+    shareLinkEl.appendChild(link)
+
+    await navigator.clipboard.writeText(url).catch(() => {})
+    shareLinkEl.classList.add('copied')
+  } catch {
+    shareLinkEl.textContent = 'Cannot reach the server'
+  } finally {
+    shareButton.disabled = false
+  }
+}
+
+async function loadSharedSnippet() {
+  const id = new URLSearchParams(location.search).get('id')
+  if (!id) return
+
+  try {
+    const response = await fetch(`/api/snippets/${encodeURIComponent(id)}`)
+    if (!response.ok) return
+
+    const snippet = await response.json()
+    if (!(snippet.language in LANGUAGES)) return
+
+    codeByLanguage[currentLanguage] = editor.getValue()
+    currentLanguage = snippet.language
+    languageSelect.value = currentLanguage
+    monaco.editor.setModelLanguage(editor.getModel()!, LANGUAGES[currentLanguage].monaco)
+    editor.setValue(snippet.source)
+    stdinInput.value = snippet.stdin
+  } catch {
+    // tiho odustani; korisnik i dalje ima prazan editor sa podrazumevanim šablonom
+  }
+}
+
+shareButton.addEventListener('click', () => void share())
+void loadSharedSnippet()
