@@ -156,4 +156,55 @@ class DockerRunnerTest {
             """, "");
         assertEquals(Verdict.COMPILE_ERROR, result.verdict());
     }
+
+    @Test
+    void pythonHelloWorld() throws Exception {
+        var result = runner.run(LanguageConfig.PYTHON, """
+            print("Hello from Python")
+            """, "");
+        assertEquals(Verdict.OK, result.verdict());
+        assertEquals("Hello from Python\n", result.stdout());
+    }
+
+    @Test
+    void pythonReadsStdin() throws Exception {
+        var result = runner.run(LanguageConfig.PYTHON, """
+            a, b = map(int, input().split())
+            print(a + b)
+            """, "2 3");
+        assertEquals(Verdict.OK, result.verdict());
+        assertEquals("5\n", result.stdout());
+    }
+
+    @Test
+    void pythonSyntaxErrorGivesCompileErrorVerdict() throws Exception {
+        var result = runner.run(LanguageConfig.PYTHON, "def broken(:\n    pass\n", "");
+        assertEquals(Verdict.COMPILE_ERROR, result.verdict());
+    }
+
+    @Test
+    void javascriptHelloWorld() throws Exception {
+        var result = runner.run(LanguageConfig.JAVASCRIPT, """
+            console.log("Hello from JS");
+            """, "");
+        assertEquals(Verdict.OK, result.verdict());
+        assertEquals("Hello from JS\n", result.stdout());
+    }
+
+    @Test
+    void javascriptReadsStdin() throws Exception {
+        var result = runner.run(LanguageConfig.JAVASCRIPT, """
+            const line = require('fs').readFileSync(0, 'utf-8').trim();
+            const [a, b] = line.split(' ').map(Number);
+            console.log(a + b);
+            """, "2 3");
+        assertEquals(Verdict.OK, result.verdict());
+        assertEquals("5\n", result.stdout());
+    }
+
+    @Test
+    void javascriptSyntaxErrorGivesCompileErrorVerdict() throws Exception {
+        var result = runner.run(LanguageConfig.JAVASCRIPT, "function broken( {\n", "");
+        assertEquals(Verdict.COMPILE_ERROR, result.verdict());
+    }
 }

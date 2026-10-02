@@ -36,7 +36,7 @@ class EscapeTest {
         var result = runner.run(LanguageConfig.CPP, read("fork_bomb.cpp"), "");
         // ne sme da obori mašinu niti da radi zauvek; ili padne na pids limitu (RUNTIME_ERROR)
         // ili istekne vremenski limit pre nego što se otme kontroli
-        assertTrue(result.verdict() == Verdict.RUNTIME_ERROR || result.verdict() == Verdict.TIME_LIMIT);
+        assertEquals(Verdict.RUNTIME_ERROR, result.verdict());
     }
 
     @Test
