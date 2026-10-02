@@ -18,7 +18,7 @@ jobs:
           java-version: 25
       - name: Build runner images
         working-directory: .
-        run: docker build -t coderunner/cpp runners/cpp && docker build -t coderunner/c runners/c && docker build -t coderunner/java runners/java
+        run: docker build -t coderunner/cpp runners/cpp && docker build -t coderunner/c runners/c && docker build -t coderunner/java runners/java && docker build -t coderunner/python runners/python && docker build -t coderunner/js runners/js
       - run: chmod +x gradlew && ./gradlew build
       - name: Show test failures
         if: always()
@@ -51,7 +51,7 @@ jobs:
           distribution: temurin
           java-version: 25
       - name: Build runner images
-        run: docker build -t coderunner/cpp runners/cpp && docker build -t coderunner/c runners/c && docker build -t coderunner/java runners/java
+        run: docker build -t coderunner/cpp runners/cpp && docker build -t coderunner/c runners/c && docker build -t coderunner/java runners/java && docker build -t coderunner/python runners/python && docker build -t coderunner/js runners/js
       - name: Run escape tests
         working-directory: backend
         run: chmod +x gradlew && ./gradlew test --tests "*.EscapeTest"

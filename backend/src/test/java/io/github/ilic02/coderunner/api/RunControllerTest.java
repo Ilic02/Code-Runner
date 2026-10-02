@@ -73,7 +73,7 @@ class RunControllerTest {
 
     @Test
     void unknownLanguageGives400() {
-        assertEquals(400, statusOf(new RunRequest("python", "print(1)", ""), "1.1.1.3"));
+        assertEquals(400, statusOf(new RunRequest("cobol", "print(1)", ""), "1.1.1.3"));
         assertEquals(0, runner.calls);
     }
 

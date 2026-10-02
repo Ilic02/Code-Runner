@@ -50,7 +50,7 @@ class SnippetControllerTest {
 
     @Test
     void unknownLanguageGives400() {
-        assertEquals(400, statusOf(() -> controller.save(new SnippetRequest("python", "print(1)", ""))));
+        assertEquals(400, statusOf(() -> controller.save(new SnippetRequest("cobol", "print(1)", ""))));
     }
 
     @Test

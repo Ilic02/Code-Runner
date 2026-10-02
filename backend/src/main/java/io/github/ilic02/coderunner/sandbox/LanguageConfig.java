@@ -33,11 +33,29 @@ public record LanguageConfig(
             List.of("java", "-cp", "/work", "Main")
     );
 
+    public static final LanguageConfig PYTHON = new LanguageConfig(
+            "python",
+            "coderunner/python",
+            "main.py",
+            List.of("python3", "-m", "py_compile", "/work/main.py"),
+            List.of("python3", "/work/main.py")
+);
+
+    public static final LanguageConfig JAVASCRIPT = new LanguageConfig(
+            "javascript",
+            "coderunner/js",
+            "main.js",
+            List.of("node", "--check", "/work/main.js"),
+            List.of("node", "/work/main.js")
+    );
+
     public static LanguageConfig byId(String id) {
         return switch (id) {
             case "cpp" -> CPP;
             case "c" -> C;
             case "java" -> JAVA;
+            case "python" -> PYTHON;
+            case "javascript" -> JAVASCRIPT;
             default -> throw new IllegalArgumentException("Unknown language: " + id);
         };
     }

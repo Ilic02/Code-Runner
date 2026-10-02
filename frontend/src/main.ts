@@ -21,6 +21,8 @@ import 'monaco-editor/editor/contrib/wordOperations/browser/wordOperations'
 // registar za cpp registruje i "c" i "cpp"
 import 'monaco-editor/languages/definitions/cpp/register'
 import 'monaco-editor/languages/definitions/java/register'
+import 'monaco-editor/languages/definitions/python/register'
+import 'monaco-editor/languages/definitions/javascript/register'
 
 // CSS uvozimo relativnom putanjom, jer "exports" mapa paketa za bare uvoze dodaje ".js" na kraj
 import '../node_modules/monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css'
@@ -80,6 +82,22 @@ const LANGUAGES: Record<string, Language> = {
       '        System.out.println("Hello, world!");',
       '    }',
       '}',
+      '',
+    ].join('\n'),
+  },
+  python: {
+    label: 'Python',
+    monaco: 'python',
+    template: [
+      'print("Hello, world!")',
+      '',
+    ].join('\n'),
+  },
+  javascript: {
+    label: 'JavaScript',
+    monaco: 'javascript',
+    template: [
+      'console.log("Hello, world!");',
       '',
     ].join('\n'),
   },
