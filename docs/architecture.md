@@ -33,7 +33,7 @@ flowchart TD
 4. **Compile phase** (`DockerRunner`): the submitted code is written to a fresh, world-writable temp directory, then run in a container built from the matching `LanguageConfig` (e.g. `g++` for C++, a syntax check for Python/JS). A non-zero exit here (or a timeout) yields `COMPILE_ERROR` and the run phase is skipped.
 5. **Run phase**: a second container runs the compiled binary (or the interpreter), this time with the full sandbox: memory limit, process limit, no network, read-only filesystem except a small `/tmp`, dropped Linux capabilities, no new privileges. A background timer kills the container if it exceeds the time limit; stdout/stderr are capped at 64 KB each.
 6. **Verdict classification**: timeout → `TIME_LIMIT`; output capped → `OUTPUT_LIMIT`; exit code 137 → `MEMORY_LIMIT`; exit code 0 → `OK`; anything else → `RUNTIME_ERROR`.
-7. The container is killed unconditionally after the process exits, regardless of why it exited (see `docs/decisions/003`).
+7. The container is killed unconditionally after the process exits, regardless of why it exited (see `docs/decisions/002`).
 
 ## Snippet sharing
 
