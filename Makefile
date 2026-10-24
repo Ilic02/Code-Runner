@@ -9,3 +9,9 @@ runners:
 
 test:
 	cd backend && ./gradlew test
+
+up:
+	docker compose up --build
+
+down:
+	docker compose down
