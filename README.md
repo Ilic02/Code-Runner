@@ -37,8 +37,8 @@ try to break your own sandbox — all documented as they were found, in
 Requires Docker and Docker Compose.
 
 ```bash
-git clone https://github.com/<your-username>/code-runner.git
-cd code-runner
+git clone https://github.com/Ilic02/Code-Runner.git
+cd Code-Runner
 make up
 ```
 
